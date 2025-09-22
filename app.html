@@ -13,11 +13,8 @@
     #status { margin-top:10px; font-size:16px; color:#333; }
     #alertOverlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(255,0,0,0.95); display:flex; align-items:center; justify-content:center; font-size:64px; font-weight:900; color:white; opacity:0; pointer-events:none; transition:opacity .2s; }
     #alertOverlay.active { opacity:1; animation:pulse 1s infinite; }
-    @keyframes pulse {
-      0% { opacity:1; transform:scale(1); }
-      50% { opacity:0.3; transform:scale(0.95); }
-      100% { opacity:1; transform:scale(1); }
-    }
+    @keyframes pulse { 0% { opacity:1; transform:scale(1); } 50% { opacity:0.3; transform:scale(0.95); } 100% { opacity:1; transform:scale(1); } }
+    button { margin:5px; padding:10px 20px; font-size:16px; }
   </style>
 </head>
 <body>
@@ -25,9 +22,10 @@
   <div id="map"></div>
   <div class="controls">
     <div id="status">Sin alertas.</div>
+    <button onclick="sendEvent('Alarma activada')">Activar Alarma</button>
+    <button onclick="sendEvent('Alarma desactivada')">Desactivar Alarma</button>
   </div>
   <div id="alertOverlay">🚨 ALERTA 🚨</div>
-
   <audio id="alarm" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
   
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -35,60 +33,66 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
     import { getFirestore, collection, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-    // 🔹 Configuración de Firebase para Web
+    // 🔹 Configuración pública Firebase Web SDK
     const firebaseConfig = {
       apiKey: "TU_API_KEY",
       authDomain: "safepack111-a23cf.firebaseapp.com",
       projectId: "safepack111-a23cf",
       storageBucket: "safepack111-a23cf.appspot.com",
       messagingSenderId: "1067332966143",
-      appId: "1:1067332966143:web:xxxxxxxxxx"
+      appId: "1:1067332966143:web:XXXXXXXXXX"
     };
 
-    // Inicializar Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // Coordenadas (ejemplo)
-    const LAT = 8.4199167;
-    const LON = -82.4440833;
-
     // Mapa
+    const LAT = 8.4199167, LON = -82.4440833;
     const map = L.map('map').setView([LAT, LON], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    L.marker([LAT, LON]).addTo(map).bindPopup("Ubicación de SafePack").openPopup();
+    const marker = L.marker([LAT, LON]).addTo(map).bindPopup("Ubicación de SafePack").openPopup();
 
     const statusEl = document.getElementById("status");
     const overlay = document.getElementById("alertOverlay");
     const alarm = document.getElementById("alarm");
 
-    // Escuchar la colección 'events' y tomar el último evento
+    // Escuchar últimos eventos
     const eventsRef = collection(db, "events");
     const q = query(eventsRef, orderBy("timestamp", "desc"), limit(1));
 
     onSnapshot(q, (querySnap) => {
       querySnap.forEach(docSnap => {
         const data = docSnap.data();
-        if (data.extra === "Alarma activada") {
-          triggerAlert();
-        } else if (data.extra === "Alarma desactivada") {
-          stopAlert();
+        if (data.lat && data.lon) {
+          marker.setLatLng([data.lat, data.lon]);
+          map.setView([data.lat, data.lon], 17);
         }
+        if (data.extra === "Alarma activada") triggerAlert();
+        else if (data.extra === "Alarma desactivada") stopAlert();
       });
     });
 
-    function triggerAlert(){
+    function triggerAlert() {
       overlay.classList.add("active");
       alarm.loop = true;
       alarm.play().catch(()=>{});
       statusEl.innerText = "🚨 ALERTA ACTIVADA 🚨";
     }
 
-    function stopAlert(){
+    function stopAlert() {
       overlay.classList.remove("active");
       alarm.pause();
       alarm.currentTime = 0;
       statusEl.innerText = "Sin alertas.";
+    }
+
+    // 🔹 Función para enviar evento a la serverless function en Vercel
+    async function sendEvent(extra) {
+      await fetch("/api/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extra, lat: LAT, lon: LON })
+      });
     }
   </script>
 </body>
